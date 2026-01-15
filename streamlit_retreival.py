@@ -1,84 +1,67 @@
-import streamlit as st 
-import json 
-import os 
-from google import genai
-from google.genai import types
-from pydantic import BaseModel, Field
+import streamlit as st
+import os
 from dotenv import load_dotenv
-
+# import google.generativeai as genai
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain.agents import AgentExecutor, create_tool_calling_agent
+from langchain.tools import tool
+from langchain_core.prompts import ChatPromptTemplate
 
 load_dotenv()
-
 google_api_key = os.getenv('GOOGLE_API_KEY')
-client = genai.Client(api_key= google_api_key)
-kb_path = 'data/kb.json'
 
+kb_path = 'data/kb.json'
 st.title("Chat Bot")
 
-def search_kb(question: str):
-    f"""
-    You are a helpful assistant that answers questions from the knowledgebase about an ecommerce store.
-    Load the whole knowledge base from the JSON file located at {kb_path}.
-    (This is a mock function for demonstration purposes, we don't search)
-    """
-    with open(kb_path, 'r') as f:
-        return json.load(f)
+# Define tool using the @tool decorator
+@tool
+def get_weather(city: str) -> str:
+    """Get weather for a given city."""
+    return f"It's always sunny in {city}!"
+
+@tool
+def WriteSQLQuery(problem: str) -> str:
+    """Write a SQL query based on the given problem description.
     
-tools = [
-    {
-        "type": "function",
-        "function": {
-            "name": "search_kb",
-            "description": "Get the answer to the user's question from the knowledge base.",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "question": {"type": "string"},
-                },
-                "required": ["question"],
-                "additionalProperties": False,
-            },
-            "strict": True,
-        },
-    }
-]
+    Args:
+        problem: A natural language description of what the SQL query should do
+        
+    Returns:
+        A SQL query string in {sql_query}
+    """
+    
+    return f"{sql_query}"
+    
 
-config = types.GenerateContentConfig(
-    tools = [search_kb],
-    # response_mime_type= 'application/json'
-    )
+# Initialize the model
+llm = ChatGoogleGenerativeAI(
+    model="gemini-2.0-flash-exp",
+    google_api_key=google_api_key,
+    temperature=0
+)
 
-def call_function(name, args):
-    if name== "search_kb":
-        return search_kb(**args)
+# Create prompt template
+prompt = ChatPromptTemplate.from_messages([
+    ("system", "You are a helpful assistant"),
+    ("human", "{input}"),
+    ("placeholder", "{agent_scratchpad}"),
+])
 
-def GetDataFromBot(user_query):
-    try: 
-        response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        config= config,
-        contents= user_query
-        )
-        return response.text
-
-    except Exception as e:
-        return e
-
-user_query = ''
+# Create agent
+tools = [get_weather, WriteSQLQuery]
+agent = create_tool_calling_agent(llm, tools, prompt)
+agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_execution_time=10)
 
 user_query = st.text_input("Start Chat here:")
 
 # Adding exit sequence
 if st.button("Send"):
-
     # Prevent blank or whitespace-only inputs
     if not user_query.strip():
         st.warning("Please enter a message before sending.")
-    
     elif user_query.lower() == "exit":
         st.warning("Ending session.")
     else:
-        response = GetDataFromBot(user_query)
-    st.subheader("Assistant Response")
-    # st.markdown(response.strip())
-    st.markdown(response)
+        response = agent_executor.invoke({"input": user_query})
+        st.subheader("Assistant Response")
+        st.markdown(response['output'])
