@@ -1,6 +1,8 @@
 import streamlit as st
 import os
 from dotenv import load_dotenv
+from langchain_ollama import ChatOllama
+from duckduckgo_search import DDGS
 # import google.generativeai as genai
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain.agents import AgentExecutor, create_tool_calling_agent
@@ -15,7 +17,7 @@ st.title("Chat Bot")
 
 # Define tool using the @tool decorator
 @tool
-def get_weather(city: str) -> str:
+def GetWeather(city: str) -> str:
     """Get weather for a given city."""
     return f"It's always sunny in {city}!"
 
@@ -27,28 +29,34 @@ def WriteSQLQuery(problem: str) -> str:
         problem: A natural language description of what the SQL query should do
         
     Returns:
-        A SQL query string in {sql_query}
+        A SQL query string in this variable: {sql_query}
     """
     
-    return f"{sql_query}"
+    return f"Generated SQL query for: {problem}"
     
-
+@tool 
+def SearchWeb(query: str) -> str:
+    """Search the web and get the relavent answer."""
+    results = DDGS().text("python programming", max_results=3)
+    return results    
+    
 # Initialize the model
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash-exp",
-    google_api_key=google_api_key,
-    temperature=0
+llm = ChatOllama(
+    model="llama3.2:3b",
+    # google_api_key=google_api_key, # In case the Gemini API is used later
+    temperature=0,
+    base_url="http://localhost:11434",
 )
 
 # Create prompt template
 prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant"),
+    ("system", "You are a helpful assistant that can use tools ONLY when necessary. When you decide to use a tool, call it using the exact tool calling format. When you have the final answer - just write normal text."),
     ("human", "{input}"),
     ("placeholder", "{agent_scratchpad}"),
 ])
 
 # Create agent
-tools = [get_weather, WriteSQLQuery]
+tools = [GetWeather, WriteSQLQuery, SearchWeb]
 agent = create_tool_calling_agent(llm, tools, prompt)
 agent_executor = AgentExecutor(agent=agent, tools=tools, verbose=True, max_execution_time=10)
 
