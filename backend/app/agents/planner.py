@@ -20,7 +20,7 @@ llm = ChatOllama(
     model="llama3.2:3b",
     temperature=0,
     base_url="http://localhost:11434",
-    format="json",  # This might help with tool calling
+    # format="json",  # This might help with tool calling
 )
 
 # # Initialize tools
@@ -29,7 +29,7 @@ llm_with_tools = llm.bind_tools(tools, tool_choice = 'auto')
 
 # Create prompt
 prompt = ChatPromptTemplate.from_messages([
-    ("system", "You are a helpful assistant. Use the available tools to answer questions accurately. When the user asks you to break down a task, use the break_down_task tool."),
+    ("system", "You are a helpful assistant. Use the available tools only if needed to answer questions accurately. If a tool for the said input doesn't fit, generate a reply on your own"),
     ("human", "{input}"),
     ("placeholder", "{agent_scratchpad}"),
 ])
@@ -45,7 +45,7 @@ agent_executor = AgentExecutor(
 
 def PlannerAgent(user_input) -> str:
     """
-    Agent that uses tools to break down tasks.
+    Agent that uses tools if needed.
     Returns model output as a string.
     """
     try:
