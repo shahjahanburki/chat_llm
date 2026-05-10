@@ -2,6 +2,7 @@ import os
 import pandas as pd
 from dotenv import load_dotenv
 from typing import Any
+import json 
 
 from ..schemas import AgentEmail
 from ..utils.utils import get_string
@@ -11,7 +12,7 @@ from langchain.tools import tool
 from langchain_core.prompts import ChatPromptTemplate
 from langchain.agents import create_tool_calling_agent, AgentExecutor
 
-load_dotenv('/Users/shahjahan_khan/Documents/ai_agent_tut/.env')
+load_dotenv('PATH TO ENV')
 data_path = os.getenv('DATA_PATH')
 model = os.getenv("OLLAMA_MODEL")
 base_url = os.getenv("BASE_URL")
@@ -58,7 +59,7 @@ def lookup_data(query: Any) -> str:
         return f"Error searching data: {str(e)}"
     
 @tool 
-async def draft_email(user_input: str) -> str:
+async def draft_email(user_input: Any) -> str:
     """Agent logic to quickly draft an email """
     try: 
         email: AgentEmail = await email_drafting_chain.ainvoke({"input": user_input})
@@ -90,42 +91,51 @@ email_drafting_chain = email_prompt | structured_llm
 
 async def planner_agent(user_input) -> str:
     """
-    Agent that takes in user_input and decided which tool from a list of tools to use if needed.
+    Agent that takes in user_input and decides which tool to use.
     Returns model output as a string.
     """
     try:
-        
-        # Create prompt
         prompt = ChatPromptTemplate.from_messages([
             ("system", """You are a helpful AI assistant.
             You have access to different tools:
             - lookup_data: Use this when user asks about information that might exist in the dataset.
             - general_chat: Use this for casual talk, explanations, or when no data is needed.
-            
+            - draft_email: Use this when user wants to draft or send an email.
             Think step by step before choosing a tool."""),
             ("placeholder", "{chat_history}"),
             ("human", "{input}"),
             ("placeholder", "{agent_scratchpad}"),
         ])
-        
-        # Create agent
-        agent = create_tool_calling_agent(llm_with_tools, tools, prompt)  
+
+        agent = create_tool_calling_agent(llm_with_tools, tools, prompt)
         agent_executor = AgentExecutor(
-            agent=agent, 
-            tools=tools, 
+            agent=agent,
+            tools=tools,
             verbose=True,
-            handle_parsing_errors=True  # This helps with errors
+            handle_parsing_errors=True,
+            max_iterations=2
         )
-        
+
         response = await agent_executor.ainvoke({"input": user_input})
-        
-        if isinstance(response, dict):
-            return response.get('output', str(response))
-        else:
-            return str(response)
-            
+        output = response.get('output', str(response))
+
+        try:
+            parsed = json.loads(output)
+            if parsed.get("status") == "email_drafted":
+                email = parsed["email"]
+                return (
+                    f"Email drafted!\n\n"
+                    f"To: {email['to']}\n"
+                    f"From: {email['from']}\n"
+                    f"Subject: {email['subject']}\n\n"
+                    f"{email['body']}"
+                )
+        except (json.JSONDecodeError, TypeError, KeyError):
+            pass
+
+        return output
+
     except Exception as e:
         import traceback
-        error_details = traceback.format_exc()
-        print(error_details)
+        print(traceback.format_exc())
         return f"[Error calling LLM] {str(e)}"
