@@ -23,10 +23,8 @@ df = pd.read_csv(data_path)
 
 # Initialize LLM with tool calling format
 llm = ChatOllama(
-    # model="llama3.2:3b",
     model = model,
     temperature=0,
-    # base_url="http://localhost:11434",
     base_url= base_url,
     # format="json",  # This might help with tool calling
 )
